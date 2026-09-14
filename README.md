@@ -26,7 +26,7 @@ C:\Users\teraw_rp58jwl\anaconda3\python.exe -m http.server 4174 --directory dist
 .\daily_update.ps1 -InstallTask
 ```
 
-排程使用台北時間，每天 11:30 與 16:00 執行；若電腦當時未開機，會在下一次可執行時補跑。這台電腦必須能讀取 FinLab 快取／API 與 `G:` Google Drive 的 LSEG 資料庫。
+排程使用台北時間，每天 11:30、16:00、17:00、18:00 與 21:30 執行；若電腦當時未開機，會在下一次可執行時補跑。這台電腦必須能讀取 FinLab 快取／API 與 `G:` Google Drive 的 LSEG 資料庫。
 
 ## 資料口徑
 

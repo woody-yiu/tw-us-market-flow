@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$InstallTask
 )
 
@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $pythonPath = "C:\Users\teraw_rp58jwl\anaconda3\python.exe"
 $taskName = "台美股資金流向每日更新"
-$taskTimes = @("11:30", "16:00")
+$taskTimes = @("11:30", "16:00", "17:00", "18:00", "21:30")
 
 if ($InstallTask) {
     $action = New-ScheduledTaskAction `
@@ -27,7 +27,7 @@ if ($InstallTask) {
         -Settings $settings `
         -Description "每日重建 FinLab 台股與 LSEG 美股資金流資料並發布網站" `
         -Force | Out-Null
-    Write-Host "已建立排程：$taskName，每天 11:30 與 16:00 執行。"
+    Write-Host "已建立排程：$taskName，每天 11:30、16:00、17:00、18:00 與 21:30 執行。"
     return
 }
 
@@ -43,8 +43,21 @@ if ($LASTEXITCODE -ne 0) { throw "美股資料更新失敗。" }
 & $pythonPath ".\update_tw_industry_data.py"
 if ($LASTEXITCODE -ne 0) { throw "台股資料更新失敗。" }
 
-& node -e "const fs=require('fs');const h=fs.readFileSync('dist/index.html','utf8');const a=h.lastIndexOf('<script>')+8,b=h.lastIndexOf('</script>');new Function(h.slice(a,b));const raw=fs.readFileSync('dist/data.js','utf8');if(!raw.startsWith('window.FLOW_DATA='))throw Error('invalid data.js');"
-if ($LASTEXITCODE -ne 0) { throw "網站資料驗證失敗。" }
+$indexHtml = [System.IO.File]::ReadAllText((Join-Path $projectRoot "dist\index.html"))
+$dataJs = [System.IO.File]::ReadAllText((Join-Path $projectRoot "dist\data.js"))
+$dataPrefix = "window.FLOW_DATA="
+if (-not $indexHtml.Contains('<script src="./data.js?v=') -or -not $dataJs.StartsWith($dataPrefix)) {
+    throw "網站資料驗證失敗。"
+}
+$jsonText = $dataJs.Substring($dataPrefix.Length).TrimEnd()
+if ($jsonText.EndsWith(";")) {
+    $jsonText = $jsonText.Substring(0, $jsonText.Length - 1)
+}
+try {
+    $null = ConvertFrom-Json -InputObject $jsonText
+} catch {
+    throw "網站資料 JSON 驗證失敗：$($_.Exception.Message)"
+}
 
 & git add -- "dist/index.html" "dist/data.js"
 & git diff --cached --quiet
