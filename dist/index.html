@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="台股與美股產業資金流向儀表板，支援日、週、月、今年累計與自訂區間。">
+  <title>雙市場資金羅盤</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071016;
+      --panel: #0d1920;
+      --panel-2: #101f27;
+      --line: #20333d;
+      --line-soft: #172830;
+      --ink: #edf5f6;
+      --muted: #91a7ae;
+      --muted-2: #657b83;
+      --inflow: #ff7065;
+      --inflow-soft: #3a2021;
+      --outflow: #35c8a5;
+      --outflow-soft: #14302d;
+      --gold: #e8c66e;
+      --focus: #9dd9ff;
+      --radius: 16px;
+      font-family: Inter, "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .shell { width: min(1460px, calc(100% - 36px)); margin: 0 auto; padding: 24px 0 56px; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      width: 38px; height: 38px; display: grid; place-items: center;
+      border: 1px solid #31505d; border-radius: 11px; background: #0b171d;
+      color: var(--gold); flex: 0 0 auto;
+    }
+    .brand h1 { margin: 0; font-size: 1.15rem; letter-spacing: .04em; font-weight: 720; }
+    .brand p { margin: 2px 0 0; color: var(--muted); font-size: .82rem; }
+    .source-state {
+      display: inline-flex; align-items: center; gap: 8px; color: var(--muted);
+      font-size: .83rem; white-space: nowrap;
+    }
+    .source-state::before {
+      content: ""; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--gold); box-shadow: 0 0 0 4px rgba(232,198,110,.1);
+    }
+    .control-row {
+      display: flex; align-items: end; justify-content: space-between; gap: 18px;
+      padding: 24px 0 18px;
+    }
+    .control-copy h2 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.25rem); letter-spacing: -.035em; }
+    .control-copy p { margin: 5px 0 0; color: var(--muted); font-size: .92rem; }
+    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .segmented {
+      display: inline-flex; padding: 4px; gap: 3px; border: 1px solid var(--line);
+      border-radius: 12px; background: #09141a;
+    }
+    .segmented button {
+      border: 0; background: transparent; color: var(--muted); min-height: 38px;
+      padding: 0 14px; border-radius: 8px; cursor: pointer; font-weight: 650; font-size: .88rem;
+    }
+    .segmented button:hover { color: var(--ink); background: #13232b; }
+    .segmented button[aria-pressed="true"] { color: #081116; background: var(--ink); }
+    .custom-range {
+      display: flex; align-items: end; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
+      margin: -8px 0 14px; padding: 12px; border: 1px solid var(--line-soft);
+      border-radius: 12px; background: #0a151b;
+    }
+    .custom-range[hidden] { display: none; }
+    .custom-range label { display: grid; gap: 4px; color: var(--muted); font-size: .72rem; }
+    .custom-range input {
+      min-height: 38px; padding: 6px 10px; color: var(--ink); color-scheme: dark;
+      border: 1px solid #31505d; border-radius: 8px; background: #0d1b22;
+    }
+    .custom-range button {
+      min-height: 38px; padding: 0 16px; border: 1px solid var(--gold); border-radius: 8px;
+      background: rgba(232,198,110,.12); color: var(--gold); cursor: pointer; font-weight: 700;
+    }
+    .custom-range button:hover { background: rgba(232,198,110,.2); }
+    .custom-range-status { min-width: 180px; color: var(--muted); font-size: .76rem; }
+    .custom-range-status.error { color: var(--inflow); }
+    button:focus-visible, a:focus-visible, summary:focus-visible {
+      outline: 3px solid var(--focus); outline-offset: 3px;
+    }
+    .legend { display: flex; align-items: center; gap: 13px; color: var(--muted); font-size: .8rem; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+    .legend .in { background: var(--inflow); }
+    .legend .out { background: var(--outflow); }
+    .asof {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 10px 12px; background: #0a151b; border: 1px solid var(--line-soft);
+      border-radius: 10px; color: var(--muted); font-size: .82rem; margin-bottom: 14px;
+    }
+    .asof strong { color: var(--ink); font-weight: 650; }
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .kpi {
+      padding: 17px 18px; background: var(--panel); border: 1px solid var(--line);
+      border-radius: var(--radius); min-height: 114px;
+    }
+    .kpi .label { color: var(--muted); font-size: .82rem; }
+    .kpi .value { display: block; margin-top: 7px; font-size: clamp(1.35rem, 2.4vw, 2rem); letter-spacing: -.04em; }
+    .kpi .sub { display: block; color: var(--muted-2); font-size: .77rem; margin-top: 3px; }
+    .positive { color: var(--inflow); }
+    .negative { color: var(--outflow); }
+    .grid-main { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, .75fr); gap: 12px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    .panel-head {
+      display: flex; align-items: start; justify-content: space-between; gap: 18px;
+      padding: 17px 18px 13px; border-bottom: 1px solid var(--line-soft);
+    }
+    .panel-head h3 { margin: 0; font-size: 1rem; }
+    .panel-head p { margin: 3px 0 0; color: var(--muted); font-size: .78rem; }
+    .unit { color: var(--muted); font-size: .76rem; white-space: nowrap; padding-top: 2px; }
+    .rank-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 10px 14px 14px; }
+    .rank-side { min-width: 0; border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; }
+    .rank-side-head { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); font-size: .78rem; }
+    .rank-side.inflow .rank-side-head strong { color: var(--inflow); }
+    .rank-side.outflow .rank-side-head strong { color: var(--outflow); }
+    .rank-columns {
+      display: grid; grid-template-columns: minmax(82px, 1.2fr) minmax(52px, 1fr) 62px 74px;
+      gap: 8px; padding: 8px 10px 3px; color: var(--muted-2); font-size: .66rem;
+    }
+    .rank-columns span:nth-child(3), .rank-columns span:nth-child(4) { text-align: right; }
+    .rank-list { padding: 0 10px 8px; }
+    .rank-row {
+      display: grid; grid-template-columns: minmax(82px, 1.2fr) minmax(52px, 1fr) 62px 74px;
+      align-items: center; gap: 8px; min-height: 40px; border-bottom: 1px solid var(--line-soft);
+      font-size: .78rem;
+    }
+    button.rank-row {
+      width: 100%; padding: 0; background: transparent; color: inherit; text-align: left;
+      border-top: 0; border-right: 0; border-left: 0; cursor: pointer;
+    }
+    button.rank-row:hover, button.rank-row:focus-visible { background: #12232b; }
+    button.rank-row:hover .rank-name { color: var(--focus); }
+    .rank-row:last-child { border-bottom: 0; }
+    .rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 620; }
+    .bar-track { position: relative; height: 8px; border-radius: 2px; background: #17262d; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 2px; min-width: 2px; }
+    .bar-fill.inflow { background: var(--inflow); }
+    .bar-fill.outflow { background: var(--outflow); }
+    .rank-value { text-align: right; font-variant-numeric: tabular-nums; font-weight: 680; }
+    .rank-breadth { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: .7rem; }
+    .empty-side { padding: 22px 12px; color: var(--muted-2); font-size: .76rem; }
+    .heat-wrap { display: grid; gap: 10px; padding: 10px; }
+    .heat-side { overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; }
+    .heat-side-head { display: flex; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); font-size: .76rem; }
+    .heat-side.inflow .heat-side-head strong { color: var(--inflow); }
+    .heat-side.outflow .heat-side-head strong { color: var(--outflow); }
+    .heat-grid { position: relative; height: 210px; }
+    .heat-card {
+      position: absolute; min-width: 0; min-height: 0; padding: 12px; border: 1px solid var(--line);
+      border-radius: 11px; display: flex; flex-direction: column; justify-content: space-between;
+      overflow: hidden; transition: filter .16s ease; color: inherit; text-align: left; cursor: pointer;
+    }
+    .heat-card:hover { filter: brightness(1.12); }
+    .heat-card.small { padding: 8px; }
+    .heat-card.small .meta { display: none; }
+    .heat-card.tiny .name { font-size: .7rem; }
+    .heat-card.tiny .flow { font-size: .8rem; }
+    .heat-card.inflow { background: var(--inflow-soft); border-color: #59302e; }
+    .heat-card.outflow { background: var(--outflow-soft); border-color: #1e4b43; }
+    .heat-card .name { font-weight: 680; font-size: .82rem; line-height: 1.35; }
+    .heat-card .flow { font-size: 1rem; font-weight: 760; font-variant-numeric: tabular-nums; }
+    .heat-card .meta { color: var(--muted); font-size: .7rem; }
+    .second-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr); gap: 12px; margin-top: 12px; }
+    .chart-wrap { padding: 13px 18px 15px; min-height: 292px; }
+    .chart-toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .chart-window { flex: 0 0 auto; }
+    .chart-window button { min-height: 32px; padding: 0 11px; font-size: .76rem; }
+    .chart-playback { display: flex; align-items: center; gap: 10px; min-width: min(100%, 330px); }
+    .chart-play {
+      min-width: 68px; min-height: 32px; padding: 0 11px; border-radius: 8px;
+      border: 1px solid #31505d; background: #11232b; color: var(--ink);
+      cursor: pointer; font-size: .76rem; font-weight: 650;
+    }
+    .chart-play:hover { background: #17313b; }
+    .chart-scrubber { width: 150px; accent-color: var(--gold); cursor: pointer; }
+    .chart-progress { color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .chart-progress.is-limited { color: var(--gold); }
+    #trend-chart { width: 100%; min-height: 218px; display: block; }
+    #trend-chart .trend-line { transition: opacity .16s ease; }
+    #trend-chart .trend-current { filter: drop-shadow(0 0 4px currentColor); }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 7px; }
+    .chart-legend span { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: .75rem; }
+    .chart-legend i { width: 16px; height: 3px; border-radius: 2px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+    th { color: var(--muted); font-size: .72rem; font-weight: 620; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td .ticker { font-weight: 760; }
+    td .company { display: block; color: var(--muted); font-size: .72rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+    .method { margin-top: 12px; display: grid; grid-template-columns: 1.2fr .8fr; gap: 12px; }
+    details {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 0 18px;
+    }
+    summary { cursor: pointer; padding: 16px 0; font-weight: 680; font-size: .9rem; }
+    details p, details li { color: var(--muted); font-size: .82rem; }
+    details ul { margin: 0 0 17px; padding-left: 18px; }
+    details p { margin: 0 0 16px; }
+    .status-card {
+      background: #0b171d; border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+    .status-card h3 { margin: 0 0 10px; font-size: .9rem; }
+    .status-line { display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; color: var(--muted); font-size: .78rem; border-bottom: 1px solid var(--line-soft); }
+    .status-line:last-child { border: 0; }
+    .status-line strong { color: var(--ink); font-weight: 620; text-align: right; }
+    .status-line a { color: var(--focus); text-decoration: none; }
+    .sector-dialog {
+      width: min(820px, calc(100% - 28px)); max-height: min(720px, calc(100vh - 28px));
+      padding: 0; color: var(--ink); background: var(--panel); border: 1px solid #31505d;
+      border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,.55); overflow: hidden;
+    }
+    .sector-dialog::backdrop { background: rgba(2,8,12,.76); backdrop-filter: blur(3px); }
+    .sector-dialog-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
+      padding: 18px 20px 15px; border-bottom: 1px solid var(--line-soft);
+    }
+    .sector-dialog-head h2 { margin: 3px 0 1px; font-size: 1.25rem; }
+    .sector-dialog-head p { margin: 0; color: var(--muted); font-size: .875rem; }
+    .sector-period { color: var(--gold); font-size: .8rem; font-weight: 680; }
+    .sector-close {
+      width: 36px; height: 36px; flex: 0 0 auto; border: 1px solid var(--line);
+      border-radius: 9px; background: #112129; color: var(--muted); cursor: pointer; font-size: 1.25rem;
+    }
+    .sector-close:hover { color: var(--ink); background: #18303a; }
+    .sector-summary { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; padding: 14px 20px; }
+    .sector-stat { padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 10px; background: #0a151b; }
+    .sector-stat span { display: block; color: var(--muted); font-size: .75rem; }
+    .sector-stat strong { display: block; margin-top: 3px; font-size: 1rem; font-variant-numeric: tabular-nums; }
+    .sector-data-note { margin: 0 20px 10px; padding: 9px 11px; border-radius: 8px; background: rgba(232,198,110,.08); color: #d7c992; font-size: .8rem; }
+    .sector-table-wrap { max-height: 430px; overflow: auto; border-top: 1px solid var(--line-soft); }
+    .sector-table-wrap thead { position: sticky; top: 0; z-index: 1; background: #0d1920; }
+    .sort-button {
+      display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; border: 0;
+      background: transparent; color: inherit; font-size: inherit; font-weight: inherit;
+      text-align: left; cursor: pointer;
+    }
+    th.num .sort-button { justify-content: flex-end; }
+    .sort-button:hover { color: var(--ink); }
+    .sort-indicator { width: 1em; color: var(--focus); text-align: center; }
+    th[aria-sort="none"] .sort-indicator::before { content: "↕"; color: var(--muted-2); }
+    th[aria-sort="ascending"] .sort-indicator::before { content: "↑"; }
+    th[aria-sort="descending"] .sort-indicator::before { content: "↓"; }
+    .stock-direction { display: inline-flex; min-width: 50px; justify-content: center; padding: 3px 7px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+    .stock-direction.inflow { color: var(--inflow); background: rgba(255,112,101,.11); }
+    .stock-direction.outflow { color: var(--outflow); background: rgba(53,200,165,.11); }
+    .stock-direction.neutral { color: var(--muted); background: rgba(145,167,174,.1); }
+    .sector-empty { padding: 34px 20px; color: var(--muted); text-align: center; font-size: .875rem; }
+    footer { color: var(--muted-2); font-size: .75rem; padding-top: 20px; }
+    @media (max-width: 980px) {
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-main, .second-row, .method { grid-template-columns: 1fr; }
+      .heat-grid { height: 230px; }
+    }
+    @media (max-width: 680px) {
+      .shell { width: min(100% - 22px, 1460px); padding-top: 14px; }
+      .topbar, .control-row { align-items: flex-start; flex-direction: column; }
+      .controls { justify-content: flex-start; width: 100%; }
+      .custom-range { justify-content: flex-start; }
+      .source-state { white-space: normal; }
+      .kpis { grid-template-columns: 1fr 1fr; }
+      .kpi { padding: 14px; min-height: 102px; }
+      .rank-split { grid-template-columns: 1fr; }
+      .heat-grid { height: 250px; }
+      .asof { align-items: flex-start; flex-direction: column; }
+      .segmented button { padding: 0 11px; }
+      .chart-toolbar, .chart-playback { align-items: flex-start; width: 100%; }
+      .chart-playback { flex-wrap: wrap; }
+      .chart-scrubber { flex: 1 1 150px; }
+      .sector-summary { grid-template-columns: 1fr; }
+      .sector-dialog-head, .sector-summary { padding-left: 14px; padding-right: 14px; }
+      .sector-data-note { margin-left: 14px; margin-right: 14px; }
+      .brand p { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="21" height="21" viewBox="0 0 21 21" fill="none">
+            <path d="M3 15.5 7.2 10l3.1 2.6L17.7 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14.3 4h3.4v3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <h1>雙市場資金羅盤</h1>
+          <p>FinLab 單一產業 × LSEG GICS｜2026 年初至今</p>
+        </div>
+      </div>
+      <div class="source-state">快照已載入 · 每日同步流程待排程</div>
+    </header>
+
+    <section class="control-row" aria-label="資料篩選">
+      <div class="control-copy">
+        <h2 id="market-title">台股產業資金流</h2>
+        <p id="market-subtitle">三類法人淨買賣，每檔股票只歸入一個上市櫃產業</p>
+      </div>
+      <div class="controls">
+        <div class="segmented" aria-label="市場">
+          <button type="button" data-market="tw" aria-pressed="true">台股 TW</button>
+          <button type="button" data-market="us" aria-pressed="false">美股 US</button>
+        </div>
+        <div class="segmented" aria-label="週期">
+          <button type="button" data-period="day" aria-pressed="true">日</button>
+          <button type="button" data-period="week" aria-pressed="false">週</button>
+          <button type="button" data-period="month" aria-pressed="false">月</button>
+          <button type="button" data-period="year" aria-pressed="false">今年</button>
+          <button type="button" data-period="custom" aria-pressed="false">自訂</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="custom-range" id="custom-range" aria-label="自訂統計區間" hidden>
+      <label>開始日期<input type="date" id="custom-start"></label>
+      <label>結束日期<input type="date" id="custom-end"></label>
+      <button type="button" id="custom-apply">套用區間</button>
+      <span class="custom-range-status" id="custom-range-status" aria-live="polite"></span>
+    </section>
+
+    <div class="asof">
+      <span id="asof-text"></span>
+      <div class="legend" aria-label="顏色說明">
+        <span><i class="in"></i>淨流入</span>
+        <span><i class="out"></i>淨流出</span>
+      </div>
+    </div>
+
+    <section class="kpis" aria-label="市場摘要">
+      <article class="kpi"><span class="label">市場合計</span><strong class="value" id="kpi-total">—</strong><span class="sub" id="kpi-total-sub">—</span></article>
+      <article class="kpi"><span class="label">淨流入產業</span><strong class="value" id="kpi-positive">—</strong><span class="sub">淨流入產業 / 全部可計算產業</span></article>
+      <article class="kpi"><span class="label">平均流入家數占比</span><strong class="value" id="kpi-breadth">—</strong><span class="sub">各產業內資金為正的股票家數占比</span></article>
+      <article class="kpi"><span class="label">資料可用率</span><strong class="value" id="kpi-coverage">—</strong><span class="sub">週期內有效觀測</span></article>
+    </section>
+
+    <section class="grid-main">
+      <article class="panel">
+        <div class="panel-head">
+          <div><h3 id="ranking-title">資金流排行</h3><p>淨流入與淨流出分區，各自依金額顯示前十</p></div>
+          <span class="unit" id="ranking-unit">單位：新台幣十億元</span>
+        </div>
+        <div class="rank-split" id="rank-split"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head">
+          <div><h3>流向熱區</h3><p>流入與流出分區；各區框面積依金額配置</p></div>
+          <span class="unit">紅進 · 綠出</span>
+        </div>
+        <div class="heat-wrap" id="heat-split"></div>
+      </article>
+    </section>
+
+    <section class="second-row">
+      <article class="panel">
+        <div class="panel-head">
+          <div><h3>近期脈動</h3><p id="chart-description">主要產業最近 15 個交易日的每日方向金額</p></div>
+          <span class="unit" id="chart-unit">十億元</span>
+        </div>
+        <div class="chart-wrap">
+          <div class="chart-toolbar" aria-label="趨勢圖播放控制">
+            <div class="segmented chart-window" aria-label="趨勢期間">
+              <button type="button" data-trend-window="7" aria-pressed="false">7日</button>
+              <button type="button" data-trend-window="15" aria-pressed="true">15日</button>
+              <button type="button" data-trend-window="30" aria-pressed="false">30日</button>
+              <button type="button" data-trend-window="90" aria-pressed="false">90日</button>
+            </div>
+            <div class="chart-playback">
+              <button type="button" class="chart-play" id="chart-play" aria-label="暫停趨勢動畫">暫停</button>
+              <input class="chart-scrubber" id="chart-scrubber" type="range" min="1" max="15" value="1" aria-label="選擇趨勢日期">
+              <span class="chart-progress" id="chart-progress" aria-live="polite">—</span>
+            </div>
+          </div>
+          <svg id="trend-chart" viewBox="0 0 760 230" role="img" aria-label="近期資金流趨勢圖"></svg>
+          <div class="chart-legend" id="chart-legend"></div>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-head">
+          <div><h3>個股驅動</h3><p>報酬週期：日＝單日、週＝5日、月＝21日、今年＝年初至今、自訂＝所選交易日區間</p></div>
+          <span class="unit" id="mover-unit">新台幣億元</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>標的</th><th>產業</th><th class="num">方向金額</th><th class="num" title="依目前選擇的日、週、月或今年週期計算">本期報酬</th></tr></thead>
+            <tbody id="mover-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="method">
+      <details>
+        <summary>口徑與限制</summary>
+        <div id="method-copy"></div>
+      </details>
+      <aside class="status-card">
+        <h3>資料狀態</h3>
+        <div class="status-line"><span>台股共同資料日</span><strong id="status-tw-date">—</strong></div>
+        <div class="status-line"><span>台股產業分類快照</span><strong id="status-tw-classification">—</strong></div>
+        <div class="status-line"><span>美股價格最新日</span><strong id="status-us-date">—</strong></div>
+        <div class="status-line"><span>LSEG 分類快照</span><strong id="status-us-classification">—</strong></div>
+        <div class="status-line"><span>美股資料來源</span><strong><a href="https://drive.google.com/drive/folders/16TR4FuCrsf--bYCtnrwCtroOvVdyjqHi" target="_blank" rel="noreferrer">Google Drive ↗</a></strong></div>
+      </aside>
+    </section>
+    <footer>研究監測用途。台股為法人淨買賣估計金額；美股為價格 × 成交量方向代理，兩者不可直接互相比較，也不構成投資建議。</footer>
+  </main>
+  <dialog class="sector-dialog" id="sector-dialog" aria-labelledby="sector-dialog-title">
+    <div class="sector-dialog-head">
+      <div>
+        <span class="sector-period" id="sector-dialog-period"></span>
+        <h2 id="sector-dialog-title">產業明細</h2>
+        <p id="sector-dialog-subtitle"></p>
+      </div>
+      <button type="button" class="sector-close" id="sector-dialog-close" aria-label="關閉產業明細">×</button>
+    </div>
+    <div class="sector-summary" id="sector-summary"></div>
+    <p class="sector-data-note" id="sector-data-note"></p>
+    <div class="sector-table-wrap">
+      <table>
+        <thead><tr>
+          <th aria-sort="none"><button type="button" class="sort-button" data-stock-sort="ticker">股票<span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th aria-sort="none"><button type="button" class="sort-button" data-stock-sort="direction">方向<span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th class="num" aria-sort="descending"><button type="button" class="sort-button" data-stock-sort="flow">資金金額<span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th class="num" aria-sort="none"><button type="button" class="sort-button" data-stock-sort="return">本期報酬<span class="sort-indicator" aria-hidden="true"></span></button></th>
+        </tr></thead>
+        <tbody id="sector-stock-body"></tbody>
+      </table>
+      <div class="sector-empty" id="sector-empty" hidden></div>
+    </div>
+  </dialog>
+  <script src="./data.js?v=a09293d72752"></script>
+  <script>
+    const state = {
+      market: "tw", period: "day", trendWindow: 15, trendFrame: 1, trendPlaying: true, trendTimer: null,
+      sectorStocks: [], stockSortKey: "flow", stockSortDirection: "desc",
+      customRanges: { tw: { start: "", end: "" }, us: { start: "", end: "" } },
+      customCache: null, activeRange: null
+    };
+    const labels = { day: "單日", week: "近 5 個交易日", month: "近 21 個交易日", year: "2026 年初至今" };
+    const usNames = {
+      "Information Technology": "資訊科技", "Health Care": "醫療保健", "Financials": "金融",
+      "Consumer Discretionary": "非必需消費", "Communication Services": "通訊服務",
+      "Industrials": "工業", "Consumer Staples": "必需消費", "Energy": "能源",
+      "Utilities": "公用事業", "Real Estate": "不動產", "Materials": "原物料",
+      "Capital Goods": "資本財", "Commercial  & Professional Services": "商業與專業服務",
+      "Transportation": "運輸", "Automobiles & Components": "汽車與零組件",
+      "Consumer Durables & Apparel": "耐久消費品與服飾", "Consumer Services": "消費者服務",
+      "Consumer Discretionary Distribution & Retail": "非必需消費零售",
+      "Consumer Staples Distribution & Retail": "必需消費零售", "Food, Beverage & Tobacco": "食品飲料與菸草",
+      "Household & Personal Products": "家庭與個人用品", "Health Care Equipment & Services": "醫療設備與服務",
+      "Pharmaceuticals, Biotechnology & Life Sciences": "製藥、生技與生命科學",
+      "Banks": "銀行", "Financial Services": "金融服務", "Insurance": "保險",
+      "Software & Services": "軟體與服務", "Technology Hardware & Equipment": "科技硬體與設備",
+      "Semiconductors & Semiconductor Equipment": "半導體與設備",
+      "Telecommunication Services": "電信服務", "Media & Entertainment": "媒體與娛樂",
+      "Equity Real Estate Investment Trusts (REITs)": "權益型不動產投資信託",
+      "Real Estate Management & Development": "不動產管理與開發"
+    };
+    const chartColors = ["#ff7065", "#e8c66e", "#71b7ff", "#35c8a5"];
+    const fmt = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+    const displayName = name => state.market === "us" ? (usNames[name] || name) : name;
+    const signed = value => `${value > 0 ? "+" : ""}${fmt.format(value)}`;
+    const flowUnit = () => state.market === "tw" ? "新台幣十億元" : "十億美元方向成交額";
+    const stockFlowUnit = () => state.market === "tw" ? "新台幣億元" : "十億美元方向成交額";
+    const sectorKey = name => encodeURIComponent(name);
+
+    function setPressed(selector, key, value) {
+      document.querySelectorAll(selector).forEach(btn => btn.setAttribute("aria-pressed", btn.dataset[key] === value ? "true" : "false"));
+    }
+    function marketData() { return window.FLOW_DATA[state.market]; }
+    function rounded(value, digits) {
+      const scale = 10 ** digits;
+      return Math.round((value + Number.EPSILON) * scale) / scale;
+    }
+    function validMean(values) {
+      const valid = values.filter(Number.isFinite);
+      return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null;
+    }
+    function customPeriodData() {
+      const data = marketData();
+      const history = data.history;
+      const range = state.customRanges[state.market];
+      const cacheKey = `${state.market}|${range.start}|${range.end}`;
+      if (state.customCache?.key === cacheKey) {
+        state.activeRange = state.customCache.range;
+        return state.customCache.data;
+      }
+      const indices = history.dates.map((date, index) => ({ date, index }))
+        .filter(item => item.date >= range.start && item.date <= range.end);
+      if (!indices.length) return null;
+
+      const firstIndex = indices[0].index;
+      const lastIndex = indices.at(-1).index;
+      const historyIndex = new Map(history.tickers.map((ticker, index) => [ticker, index]));
+      const stockMeta = data.periods.year.stocks;
+      const stocks = stockMeta.map(meta => {
+        const rowIndex = historyIndex.get(meta.ticker);
+        if (rowIndex === undefined) return { ...meta, flow: null, return: null };
+        const flows = history.flows[rowIndex];
+        const closes = history.closes[rowIndex];
+        const selectedFlows = indices.map(item => flows[item.index]).filter(Number.isFinite);
+        const flow = selectedFlows.length ? selectedFlows.reduce((sum, value) => sum + value, 0) : null;
+        let endClose = null;
+        for (let i = lastIndex; i >= firstIndex; i -= 1) {
+          if (Number.isFinite(closes[i])) { endClose = closes[i]; break; }
+        }
+        let baseClose = null;
+        for (let i = firstIndex - 1; i >= 0; i -= 1) {
+          if (Number.isFinite(closes[i])) { baseClose = closes[i]; break; }
+        }
+        if (!Number.isFinite(baseClose) && firstIndex === 0 && Number.isFinite(history.base_closes?.[rowIndex])) {
+          baseClose = history.base_closes[rowIndex];
+        }
+        if (!Number.isFinite(baseClose)) {
+          for (let i = firstIndex; i <= lastIndex; i += 1) {
+            if (Number.isFinite(closes[i])) { baseClose = closes[i]; break; }
+          }
+        }
+        const periodReturn = Number.isFinite(endClose) && Number.isFinite(baseClose) && baseClose !== 0
+          ? (endClose / baseClose - 1) * 100 : null;
+        return {
+          ...meta,
+          _flowRaw: flow,
+          flow: Number.isFinite(flow) ? rounded(flow, state.market === "tw" ? 2 : 3) : null,
+          return: Number.isFinite(periodReturn) ? rounded(periodReturn, 2) : null
+        };
+      });
+
+      const groups = new Map();
+      stockMeta.forEach(stock => {
+        if (!groups.has(stock.sector)) groups.set(stock.sector, []);
+        groups.get(stock.sector).push(stock.ticker);
+      });
+      const stocksByTicker = new Map(stocks.map(stock => [stock.ticker, stock]));
+      const sectorScale = state.market === "tw" ? .1 : 1;
+      const sectors = [...groups].map(([name, tickers]) => {
+        const members = tickers.map(ticker => stocksByTicker.get(ticker)).filter(Boolean);
+        const observed = members.filter(stock => Number.isFinite(stock.flow));
+        const flow = observed.reduce((sum, stock) => sum + stock._flowRaw, 0) * sectorScale;
+        let validObservations = 0;
+        tickers.forEach(ticker => {
+          const rowIndex = historyIndex.get(ticker);
+          if (rowIndex === undefined) return;
+          indices.forEach(item => { if (Number.isFinite(history.flows[rowIndex][item.index])) validObservations += 1; });
+        });
+        const sectorReturn = validMean(observed.map(stock => stock.return));
+        return {
+          name,
+          flow: rounded(flow, 3),
+          return: Number.isFinite(sectorReturn) ? rounded(sectorReturn, 2) : null,
+          breadth: rounded(observed.length ? observed.filter(stock => stock.flow > 0).length / observed.length * 100 : 0, 1),
+          coverage: rounded(tickers.length ? validObservations / (tickers.length * indices.length) * 100 : 0, 1),
+          names: tickers.length,
+          observed_names: observed.length
+        };
+      }).sort((a, b) => b.flow - a.flow);
+      stocks.sort((a, b) => {
+        const aHasFlow = Number.isFinite(a.flow);
+        const bHasFlow = Number.isFinite(b.flow);
+        if (aHasFlow && bHasFlow) return b.flow - a.flow;
+        if (aHasFlow !== bHasFlow) return aHasFlow ? -1 : 1;
+        return String(a.ticker).localeCompare(String(b.ticker));
+      });
+      const positive = stocks.filter(stock => Number.isFinite(stock.flow) && stock.flow > 0).slice(0, 6);
+      const negative = stocks.filter(stock => Number.isFinite(stock.flow) && stock.flow < 0).sort((a, b) => a.flow - b.flow).slice(0, 4);
+      const result = { sectors, stocks, movers: [...positive, ...negative] };
+      const actualRange = { start: indices[0].date, end: indices.at(-1).date, days: indices.length };
+      state.customCache = { key: cacheKey, data: result, range: actualRange };
+      state.activeRange = actualRange;
+      return result;
+    }
+    function periodData() {
+      return state.period === "custom" ? customPeriodData() : marketData().periods[state.period];
+    }
+    function periodLabel() {
+      if (state.period !== "custom") return labels[state.period];
+      const range = state.activeRange;
+      return range ? `${range.start} 至 ${range.end}（${range.days} 個交易日）` : "自訂區間";
+    }
+    function syncCustomControls() {
+      const history = marketData().history;
+      const range = state.customRanges[state.market];
+      if (!range.start) range.start = history.dates[0];
+      if (!range.end) range.end = history.dates.at(-1);
+      range.start = range.start < history.dates[0] ? history.dates[0] : range.start;
+      range.end = range.end > history.dates.at(-1) ? history.dates.at(-1) : range.end;
+      const start = document.querySelector("#custom-start");
+      const end = document.querySelector("#custom-end");
+      [start, end].forEach(input => { input.min = history.dates[0]; input.max = history.dates.at(-1); });
+      start.value = range.start;
+      end.value = range.end;
+      document.querySelector("#custom-range").hidden = state.period !== "custom";
+    }
+    function weightedAverage(items, key) {
+      const weight = item => key === "breadth" ? (item.observed_names ?? item.names) : item.names;
+      const total = items.reduce((sum, item) => sum + weight(item), 0);
+      return total ? items.reduce((sum, item) => sum + item[key] * weight(item), 0) / total : 0;
+    }
+    function renderKpis(items) {
+      const total = items.reduce((s, x) => s + x.flow, 0);
+      const totalEl = document.querySelector("#kpi-total");
+      totalEl.textContent = signed(total);
+      totalEl.className = `value ${total >= 0 ? "positive" : "negative"}`;
+      document.querySelector("#kpi-total-sub").textContent = flowUnit();
+      document.querySelector("#kpi-positive").textContent = `${items.filter(x => x.flow > 0).length} / ${items.length}`;
+      document.querySelector("#kpi-breadth").textContent = `${fmt.format(weightedAverage(items, "breadth"))}%`;
+      document.querySelector("#kpi-coverage").textContent = `${fmt.format(weightedAverage(items, "coverage"))}%`;
+    }
+    function directionalItems(items, direction) {
+      return items
+        .filter(item => direction === "inflow" ? item.flow > 0 : item.flow < 0)
+        .sort((a, b) => direction === "inflow" ? b.flow - a.flow : a.flow - b.flow)
+        .slice(0, 10);
+    }
+    function renderRankSide(items, direction) {
+      const isInflow = direction === "inflow";
+      const label = isInflow ? "淨流入" : "淨流出";
+      const shareLabel = isInflow ? "流入家數" : "流出家數";
+      const max = Math.max(...items.map(item => Math.abs(item.flow)), Number.EPSILON);
+      const rows = items.length ? items.map(item => {
+        const share = isInflow ? item.breadth : 100 - item.breadth;
+        return `<button type="button" class="rank-row" data-sector-key="${sectorKey(item.name)}" aria-label="查看${displayName(item.name)}的股票資金明細">
+          <div class="rank-name" title="${displayName(item.name)}">${displayName(item.name)}</div>
+          <div class="bar-track"><div class="bar-fill ${direction}" style="width:${Math.max(2, Math.abs(item.flow) / max * 100)}%"></div></div>
+          <div class="rank-value ${isInflow ? "positive" : "negative"}">${signed(item.flow)}</div>
+          <div class="rank-breadth" title="產業內${shareLabel}占比">${shareLabel.replace("家數", "")} ${fmt.format(share)}%</div>
+        </button>`;
+      }).join("") : `<div class="empty-side">本期沒有${label}產業</div>`;
+      return `<section class="rank-side ${direction}">
+        <div class="rank-side-head"><strong>${label} TOP 10</strong><span>${items.length} 個產業</span></div>
+        <div class="rank-columns" aria-hidden="true"><span>產業</span><span></span><span>金額</span><span>${shareLabel}</span></div>
+        <div class="rank-list">${rows}</div>
+      </section>`;
+    }
+    function renderRanking(items) {
+      const inflow = directionalItems(items, "inflow");
+      const outflow = directionalItems(items, "outflow");
+      document.querySelector("#rank-split").innerHTML = renderRankSide(inflow, "inflow") + renderRankSide(outflow, "outflow");
+    }
+    function treemapLayout(items, x = 0, y = 0, w = 100, h = 100) {
+      if (items.length === 1) return [{ item: items[0], x, y, w, h }];
+      const total = items.reduce((sum, item) => sum + Math.max(Math.abs(item.flow), .0001), 0);
+      let split = 1;
+      let firstTotal = Math.max(Math.abs(items[0].flow), .0001);
+      while (split < items.length - 1) {
+        const next = Math.max(Math.abs(items[split].flow), .0001);
+        if (firstTotal + next > total / 2) break;
+        firstTotal += next;
+        split += 1;
+      }
+      const first = items.slice(0, split);
+      const second = items.slice(split);
+      const ratio = firstTotal / total;
+      return w >= h
+        ? [...treemapLayout(first, x, y, w * ratio, h), ...treemapLayout(second, x + w * ratio, y, w * (1 - ratio), h)]
+        : [...treemapLayout(first, x, y, w, h * ratio), ...treemapLayout(second, x, y + h * ratio, w, h * (1 - ratio))];
+    }
+    function renderHeatSide(items, direction) {
+      const isInflow = direction === "inflow";
+      const label = isInflow ? "淨流入" : "淨流出";
+      const shareLabel = isInflow ? "流入家數" : "流出家數";
+      const total = items.reduce((sum, item) => sum + item.flow, 0);
+      if (!items.length) return `<section class="heat-side ${direction}"><div class="heat-side-head"><strong>${label}</strong><span>0.00</span></div><div class="empty-side">本期沒有${label}產業</div></section>`;
+      const rectangles = treemapLayout(items);
+      const cards = rectangles.map(({ item, x, y, w, h }) => {
+        const share = isInflow ? item.breadth : 100 - item.breadth;
+        return `<button type="button" class="heat-card ${direction} ${w < 24 || h < 18 ? "small" : ""} ${w < 15 || h < 11 ? "tiny" : ""}"
+          data-sector-key="${sectorKey(item.name)}" aria-label="查看${displayName(item.name)}的股票資金明細"
+          title="${displayName(item.name)}｜${signed(item.flow)}｜${shareLabel} ${fmt.format(share)}%"
+          style="left:calc(${x}% + 4px);top:calc(${y}% + 4px);width:calc(${w}% - 8px);height:calc(${h}% - 8px)">
+          <div class="name">${displayName(item.name)}</div>
+          <div><div class="flow ${isInflow ? "positive" : "negative"}">${signed(item.flow)}</div>
+          <div class="meta">${item.names} 檔 · ${shareLabel} ${fmt.format(share)}%</div></div>
+        </button>`;
+      }).join("");
+      return `<section class="heat-side ${direction}"><div class="heat-side-head"><strong>${label}</strong><span class="${isInflow ? "positive" : "negative"}">${signed(total)}</span></div><div class="heat-grid">${cards}</div></section>`;
+    }
+    function renderHeat(items) {
+      const inflow = directionalItems(items, "inflow");
+      const outflow = directionalItems(items, "outflow");
+      document.querySelector("#heat-split").innerHTML = renderHeatSide(inflow, "inflow") + renderHeatSide(outflow, "outflow");
+    }
+    function renderMovers(movers) {
+      document.querySelector("#mover-body").innerHTML = movers.map(item => `
+        <tr>
+          <td><span class="ticker">${item.ticker}</span><span class="company">${item.name}</span></td>
+          <td>${displayName(item.sector)}</td>
+          <td class="num ${item.flow >= 0 ? "positive" : "negative"}">${signed(item.flow)}</td>
+          <td class="num ${item.return >= 0 ? "positive" : "negative"}">${item.return > 0 ? "+" : ""}${fmt.format(item.return)}%</td>
+        </tr>`).join("");
+    }
+    function stockMatchesSector(stock, sectorName) {
+      return String(stock.sector || "").split("／").map(value => value.trim()).includes(sectorName);
+    }
+    function stockSortValue(stock, key) {
+      if (key === "ticker") return `${stock.ticker} ${stock.name}`;
+      if (key === "direction") return Number.isFinite(stock.flow) ? (stock.flow >= 0 ? 1 : -1) : null;
+      return stock[key];
+    }
+    function sortedSectorStocks() {
+      const direction = state.stockSortDirection === "asc" ? 1 : -1;
+      return [...state.sectorStocks].sort((a, b) => {
+        const av = stockSortValue(a, state.stockSortKey);
+        const bv = stockSortValue(b, state.stockSortKey);
+        const aMissing = av === null || av === undefined || (typeof av === "number" && !Number.isFinite(av));
+        const bMissing = bv === null || bv === undefined || (typeof bv === "number" && !Number.isFinite(bv));
+        if (aMissing !== bMissing) return aMissing ? 1 : -1;
+        if (aMissing) return String(a.ticker).localeCompare(String(b.ticker), "zh-TW", { numeric: true });
+        if (typeof av === "string") return av.localeCompare(bv, "zh-TW", { numeric: true, sensitivity: "base" }) * direction;
+        if (av !== bv) return (av - bv) * direction;
+        return String(a.ticker).localeCompare(String(b.ticker), "zh-TW", { numeric: true });
+      });
+    }
+    function renderSectorStocks() {
+      document.querySelectorAll("[data-stock-sort]").forEach(button => {
+        const active = button.dataset.stockSort === state.stockSortKey;
+        button.closest("th").setAttribute("aria-sort", active ? (state.stockSortDirection === "asc" ? "ascending" : "descending") : "none");
+        button.title = active
+          ? `目前${state.stockSortDirection === "asc" ? "升冪" : "降冪"}；點擊切換排序方向`
+          : `依${button.textContent.trim()}排序`;
+      });
+      const body = document.querySelector("#sector-stock-body");
+      body.innerHTML = sortedSectorStocks().map(stock => {
+        const hasFlow = Number.isFinite(stock.flow);
+        const hasReturn = Number.isFinite(stock.return);
+        return `<tr>
+        <td><span class="ticker">${stock.ticker}</span><span class="company">${stock.name}</span></td>
+        <td><span class="stock-direction ${hasFlow ? (stock.flow >= 0 ? "inflow" : "outflow") : "neutral"}">${hasFlow ? (stock.flow >= 0 ? "流入" : "流出") : "無資料"}</span></td>
+        <td class="num ${hasFlow ? (stock.flow >= 0 ? "positive" : "negative") : ""}">${hasFlow ? signed(stock.flow) : "—"}</td>
+        <td class="num ${hasReturn ? (stock.return >= 0 ? "positive" : "negative") : ""}">${hasReturn ? `${stock.return > 0 ? "+" : ""}${fmt.format(stock.return)}%` : "—"}</td>
+      </tr>`;
+      }).join("");
+    }
+    function openSectorDetail(sectorName) {
+      const part = periodData();
+      const sector = part.sectors.find(item => item.name === sectorName);
+      if (!sector) return;
+      const hasFullStocks = Array.isArray(part.stocks);
+      const source = hasFullStocks ? part.stocks : part.movers;
+      const stocks = source.filter(stock => stockMatchesSector(stock, sectorName));
+      const observed = sector.observed_names ?? stocks.filter(stock => Number.isFinite(stock.flow)).length;
+      const direction = sector.flow >= 0 ? "淨流入" : "淨流出";
+      const share = sector.flow >= 0 ? sector.breadth : 100 - sector.breadth;
+      const shareLabel = sector.flow >= 0 ? "流入家數占比" : "流出家數占比";
+      document.querySelector("#sector-dialog-period").textContent = `${state.market === "tw" ? "台股" : "美股"} · ${periodLabel()}`;
+      document.querySelector("#sector-dialog-title").textContent = displayName(sectorName);
+      document.querySelector("#sector-dialog-subtitle").textContent = `${sector.names} 檔產業成分 · 本期 ${observed} 檔有資金資料`;
+      document.querySelector("#sector-summary").innerHTML = `
+        <div class="sector-stat"><span>產業方向</span><strong class="${sector.flow >= 0 ? "positive" : "negative"}">${direction} ${signed(sector.flow)}</strong></div>
+        <div class="sector-stat"><span>${shareLabel}</span><strong>${fmt.format(share)}%</strong></div>
+        <div class="sector-stat"><span>逐股金額單位</span><strong>${stockFlowUnit()}</strong></div>`;
+      const note = document.querySelector("#sector-data-note");
+      note.textContent = hasFullStocks
+        ? `已列出完整產業成分；可點擊欄位名稱手動排序，無資料股票固定列在最後。`
+        : `目前快照只保存全市場「個股驅動榜」，下表為其中屬於本產業的 ${stocks.length} 檔，不代表完整 ${sector.names} 檔成分。`;
+      note.hidden = false;
+      const empty = document.querySelector("#sector-empty");
+      state.sectorStocks = stocks;
+      state.stockSortKey = "flow";
+      state.stockSortDirection = "desc";
+      renderSectorStocks();
+      empty.hidden = stocks.length > 0;
+      empty.textContent = `目前個股驅動榜沒有 ${displayName(sectorName)} 的股票；完整逐股資料尚未寫入這份快照。`;
+      document.querySelector("#sector-dialog").showModal();
+    }
+    function closeSectorDetail() {
+      const dialog = document.querySelector("#sector-dialog");
+      if (dialog.open) dialog.close();
+    }
+    function trendPoints(trend) {
+      return trend.points.slice(-state.trendWindow);
+    }
+    function stopTrendAnimation() {
+      if (state.trendTimer) window.clearInterval(state.trendTimer);
+      state.trendTimer = null;
+    }
+    function updateTrendControls(trend) {
+      const points = trendPoints(trend);
+      const available = points.length;
+      const requested = state.trendWindow;
+      const current = points[Math.max(0, Math.min(state.trendFrame, available) - 1)];
+      const limited = trend.points.length < requested;
+      const play = document.querySelector("#chart-play");
+      const scrubber = document.querySelector("#chart-scrubber");
+      const progress = document.querySelector("#chart-progress");
+      scrubber.max = Math.max(available, 1);
+      scrubber.value = Math.max(1, Math.min(state.trendFrame, available));
+      play.textContent = state.trendPlaying ? "暫停" : (state.trendFrame >= available ? "重播" : "播放");
+      play.setAttribute("aria-label", state.trendPlaying ? "暫停趨勢動畫" : (state.trendFrame >= available ? "重新播放趨勢動畫" : "播放趨勢動畫"));
+      progress.textContent = current ? `${current.date} · ${Math.min(state.trendFrame, available)}/${available}日${limited ? `（目標 ${requested}日）` : ""}` : "暫無資料";
+      progress.classList.toggle("is-limited", limited);
+      document.querySelector("#chart-description").textContent = limited
+        ? `主要產業每日方向金額；目前僅有 ${available} 個交易日，尚不足 ${requested} 日`
+        : `主要產業最近 ${requested} 個交易日的每日方向金額`;
+    }
+    function renderChart(trend) {
+      const svg = document.querySelector("#trend-chart");
+      const width = 760, height = 230, pad = { l: 48, r: 14, t: 18, b: 30 };
+      const allPoints = trendPoints(trend);
+      const points = allPoints.slice(0, Math.max(1, Math.min(state.trendFrame, allPoints.length)));
+      const leaders = trend.leaders;
+      const values = allPoints.flatMap(p => leaders.map(name => Number(p[name]) || 0));
+      const bound = Math.max(...values.map(Math.abs), 1);
+      const x = i => pad.l + i * ((width - pad.l - pad.r) / Math.max(allPoints.length - 1, 1));
+      const y = v => pad.t + (bound - v) / (bound * 2) * (height - pad.t - pad.b);
+      const grid = [-1, -.5, 0, .5, 1].map(k => {
+        const yy = y(bound * k);
+        return `<line x1="${pad.l}" y1="${yy}" x2="${width - pad.r}" y2="${yy}" stroke="${k === 0 ? "#49606a" : "#1a2c34"}" stroke-width="${k === 0 ? 1.2 : 1}"/>
+          <text x="${pad.l - 8}" y="${yy + 4}" fill="#657b83" text-anchor="end" font-size="11">${fmt.format(bound * k)}</text>`;
+      }).join("");
+      const lines = leaders.map((name, idx) => {
+        const pts = points.map((p, i) => `${x(i)},${y(Number(p[name]) || 0)}`).join(" ");
+        const circles = points.map((p, i) => `<circle class="${i === points.length - 1 ? "trend-current" : ""}" cx="${x(i)}" cy="${y(Number(p[name]) || 0)}" r="${i === points.length - 1 ? 3.5 : 2.3}" fill="${chartColors[idx]}" style="color:${chartColors[idx]}"><title>${p.date} · ${displayName(name)} ${signed(Number(p[name]) || 0)}</title></circle>`).join("");
+        return `<polyline class="trend-line" points="${pts}" fill="none" stroke="${chartColors[idx]}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>${circles}`;
+      }).join("");
+      const first = allPoints[0]?.date?.slice(5) || "";
+      const last = allPoints.at(-1)?.date?.slice(5) || "";
+      svg.innerHTML = `${grid}${lines}<text x="${pad.l}" y="${height - 7}" fill="#657b83" font-size="11">${first}</text><text x="${width - pad.r}" y="${height - 7}" fill="#657b83" text-anchor="end" font-size="11">${last}</text>`;
+      document.querySelector("#chart-legend").innerHTML = leaders.map((name, i) => `<span><i style="background:${chartColors[i]}"></i>${displayName(name)}</span>`).join("");
+      updateTrendControls(trend);
+    }
+    function startTrendAnimation({ restart = false } = {}) {
+      stopTrendAnimation();
+      const trend = marketData().trend;
+      const total = trendPoints(trend).length;
+      if (!total) return;
+      if (restart || state.trendFrame >= total) state.trendFrame = 1;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        state.trendFrame = total;
+        state.trendPlaying = false;
+        renderChart(trend);
+        return;
+      }
+      state.trendPlaying = true;
+      renderChart(trend);
+      state.trendTimer = window.setInterval(() => {
+        if (state.trendFrame >= total) {
+          stopTrendAnimation();
+          state.trendPlaying = false;
+          updateTrendControls(trend);
+          return;
+        }
+        state.trendFrame += 1;
+        renderChart(trend);
+      }, 420);
+    }
+    function renderMethod(meta) {
+      const box = document.querySelector("#method-copy");
+      if (state.market === "tw") {
+        box.innerHTML = `<p><strong>台股：</strong>${meta.investor_scope}。每日以「淨買賣股數 × 當日收盤價」估算金額，使用 FinLab 上市櫃單一產業分類；每檔股票只計入一個產業，不使用題材標籤分攤。</p>
+          <ul><li>法人與價格資料最新共同日為 ${meta.flow_date}，各週期只使用截至該日的共同交易日。</li><li>上市櫃分類母體共 ${meta.universe_count} 檔，最新日有資金資料 ${meta.latest_observed_count} 檔；停牌、尚無交易或來源缺值會保留在個股明細並標示無資料。</li><li>分類來源為 ${meta.classification_source}，快照取得日為 ${meta.classification_snapshot_date}；這是目前分類快照，不是完整歷史 PIT 分類。</li><li>未納入自營商避險資料，口徑固定為外陸資、投信與自營商自行買賣。</li></ul>`;
+      } else {
+        box.innerHTML = `<p><strong>美股：</strong>以 LSEG S&amp;P 500 當前成分與 GICS 產業群分類，計算「每日報酬 × 收盤價 × 成交量」後彙總。這是方向成交額代理，不是 ETF 申購贖回、基金持倉變動或法人真實淨流量。</p>
+          <ul><li>原始價格與成交量取自 Google Drive 的 2026 年 LSEG 分區，價格資料至 ${meta.price_date}。</li><li>分類快照至 ${meta.classification_date}；今年視圖使用當前成分回看，不代表完整歷史 PIT 成分。</li><li>台股與美股口徑不同，只適合各自市場內排序，不應直接比較數值。</li></ul>`;
+      }
+    }
+    function render() {
+      const data = marketData();
+      const part = periodData();
+      if (!part) return;
+      const meta = data.meta;
+      const isTw = state.market === "tw";
+      const label = periodLabel();
+      syncCustomControls();
+      document.querySelector("#market-title").textContent = isTw ? "台股產業資金流" : "美股產業群資金壓力";
+      document.querySelector("#market-subtitle").textContent = isTw ? "三類法人淨買賣，每檔股票只歸入一個上市櫃產業" : "LSEG 價量方向代理，依 25 個 GICS 產業群彙總";
+      document.querySelector("#asof-text").innerHTML = isTw
+        ? `<strong>${label}</strong> · 法人資料至 ${meta.flow_date} · 產業分類快照 ${meta.classification_snapshot_date}`
+        : `<strong>${label}</strong> · 價格至 ${meta.price_date} · 分類快照 ${meta.classification_date}`;
+      document.querySelector("#ranking-title").textContent = `${label}淨流入／淨流出排行`;
+      document.querySelector("#ranking-unit").textContent = `單位：${flowUnit()}`;
+      document.querySelector("#chart-unit").textContent = isTw ? "新台幣十億元" : "十億美元方向成交額";
+      document.querySelector("#mover-unit").textContent = isTw ? "新台幣億元" : "十億美元方向成交額";
+      document.querySelector("#status-tw-date").textContent = window.FLOW_DATA.tw.meta.flow_date;
+      document.querySelector("#status-tw-classification").textContent = window.FLOW_DATA.tw.meta.classification_snapshot_date;
+      document.querySelector("#status-us-date").textContent = window.FLOW_DATA.us.meta.price_date;
+      document.querySelector("#status-us-classification").textContent = window.FLOW_DATA.us.meta.classification_date;
+      renderKpis(part.sectors);
+      renderRanking(part.sectors);
+      renderHeat(part.sectors);
+      renderMovers(part.movers);
+      renderChart(data.trend);
+      renderMethod(meta);
+    }
+    document.querySelectorAll("[data-market]").forEach(btn => btn.addEventListener("click", () => {
+      closeSectorDetail(); state.market = btn.dataset.market; state.customCache = null; state.activeRange = null;
+      setPressed("[data-market]", "market", state.market); state.trendFrame = 1; syncCustomControls(); render(); startTrendAnimation({ restart: true });
+    }));
+    document.querySelectorAll("[data-period]").forEach(btn => btn.addEventListener("click", () => {
+      closeSectorDetail(); state.period = btn.dataset.period; state.activeRange = null;
+      setPressed("[data-period]", "period", state.period); syncCustomControls(); render();
+    }));
+    document.querySelector("#custom-apply").addEventListener("click", () => {
+      const start = document.querySelector("#custom-start").value;
+      const end = document.querySelector("#custom-end").value;
+      const status = document.querySelector("#custom-range-status");
+      const available = marketData().history.dates.filter(date => date >= start && date <= end);
+      if (!start || !end || start > end || !available.length) {
+        status.textContent = start > end ? "開始日期不可晚於結束日期" : "所選區間沒有交易資料";
+        status.classList.add("error");
+        return;
+      }
+      state.customRanges[state.market] = { start, end };
+      state.customCache = null;
+      state.activeRange = null;
+      render();
+      status.classList.remove("error");
+      status.textContent = `已對齊 ${state.activeRange.start} 至 ${state.activeRange.end}，共 ${state.activeRange.days} 個交易日`;
+    });
+    document.querySelectorAll("[data-trend-window]").forEach(btn => btn.addEventListener("click", () => {
+      state.trendWindow = Number(btn.dataset.trendWindow);
+      setPressed("[data-trend-window]", "trendWindow", String(state.trendWindow));
+      startTrendAnimation({ restart: true });
+    }));
+    document.querySelector("#chart-play").addEventListener("click", () => {
+      const total = trendPoints(marketData().trend).length;
+      if (state.trendPlaying) {
+        stopTrendAnimation();
+        state.trendPlaying = false;
+        updateTrendControls(marketData().trend);
+      } else {
+        startTrendAnimation({ restart: state.trendFrame >= total });
+      }
+    });
+    document.querySelector("#chart-scrubber").addEventListener("input", event => {
+      stopTrendAnimation();
+      state.trendPlaying = false;
+      state.trendFrame = Number(event.target.value);
+      renderChart(marketData().trend);
+    });
+    document.addEventListener("click", event => {
+      const trigger = event.target.closest("[data-sector-key]");
+      if (trigger) openSectorDetail(decodeURIComponent(trigger.dataset.sectorKey));
+    });
+    document.querySelector("#sector-dialog-close").addEventListener("click", closeSectorDetail);
+    document.querySelectorAll("[data-stock-sort]").forEach(button => button.addEventListener("click", () => {
+      const key = button.dataset.stockSort;
+      if (state.stockSortKey === key) {
+        state.stockSortDirection = state.stockSortDirection === "asc" ? "desc" : "asc";
+      } else {
+        state.stockSortKey = key;
+        state.stockSortDirection = key === "ticker" ? "asc" : "desc";
+      }
+      renderSectorStocks();
+    }));
+    document.querySelector("#sector-dialog").addEventListener("click", event => {
+      if (event.target === event.currentTarget) closeSectorDetail();
+    });
+    render();
+    startTrendAnimation({ restart: true });
+  </script>
+</body>
+</html>
